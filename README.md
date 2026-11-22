@@ -8,13 +8,15 @@ Reproducible full-length mRNA world-model project.
 
 Read [homology-aware protein split protocol](docs/HOMOLOGY_SPLIT.md), including exact MMseqs2 commands, seed **3407**, input and output schema, independent leakage audit, and re-run requirements.
 
+For CPU-only Slurm submissions, see [ready-to-run sbatch commands](docs/CPU_SLURM.md). All development goes directly onto **main**; do not create additional branches without explicit instruction.
+
 The legacy approach used SHA-256 of the exact protein amino-acid sequence as its "cluster"; the new approach groups proteins using similarity-based connected components, with an additional partial-sequence guard.
 
 ~~~bash
 python -m unittest discover -s tests -v
 ~~~
 
-**Execution status:** code and synthetic tests have been committed on a development branch; full-scale data clustering, independent validation, training and matched baselines have NOT yet been run. Nothing in the documentation should be interpreted as a completed experiment.
+**Execution status:** code and synthetic tests have been committed directly to main; full-scale data clustering, independent validation, training and matched baselines have NOT yet been run. Nothing in the documentation should be interpreted as a completed experiment.
 
 ## Migration rules
 
