@@ -12,19 +12,19 @@
 #SBATCH --error=slurm-mrnawm-split-%j.log
 
 set -euo pipefail
-: "$STAGE"
-: "$DATA_ROOT"
-: "$SLURM_SUBMIT_DIR"
+: "${STAGE:?set STAGE to prepare/search/split/audit}"
 cd "$SLURM_SUBMIT_DIR"
-
-INPUT="$DATA_ROOT/normalized/all_refseq_mammalian_viral_unique.tsv"
-WORK="$DATA_ROOT/splits/homology_v1_seed3407"
+source scripts/config/paths.sh
+test -L "$SOURCE_TSV" || { echo "Run bash scripts/init_mrnawm_workspace.sh first" >&2; exit 2; }
+sha256sum -c "$SOURCE_MANIFEST" || { echo "Source changed. Aborting." >&2; exit 2; }
+INPUT="$SOURCE_TSV"
+WORK="$SPLIT_ROOT"
 THREADS="$SLURM_CPUS_PER_TASK"
 PYTHON_BIN="$(command -v python3)"
 export OMP_NUM_THREADS="$THREADS"
 export MKL_NUM_THREADS="$THREADS"
 export OPENBLAS_NUM_THREADS=1
-mkdir -p "$WORK"
+mkdir -p "$WORK" "$LOG_ROOT" "$TMP_ROOT"
 
 echo "stage=$STAGE job=$SLURM_JOB_ID host=$(hostname) cpus=$THREADS"
 echo "repo=$PWD input=$INPUT output=$WORK"
@@ -38,10 +38,10 @@ case "$STAGE" in
     command -v mmseqs
     test -s "$WORK/unique_proteins.fasta"
     mmseqs version > "$WORK/mmseqs_version.txt"
-    mkdir -p "$WORK/mmseqs_tmp"
+    mkdir -p "$TMP_ROOT/mmseqs_all_vs_all"
     mmseqs easy-search \
       "$WORK/unique_proteins.fasta" "$WORK/unique_proteins.fasta" \
-      "$WORK/all_vs_all.tsv" "$WORK/mmseqs_tmp" \
+      "$WORK/all_vs_all.tsv" "$TMP_ROOT/mmseqs_all_vs_all" \
       --format-output "query,target,pident,alnlen,qlen,tlen,qcov,tcov" \
       --min-seq-id 0.25 -c 0.0 -s 7.5 --max-seqs 100000 \
       --threads "$THREADS"
@@ -60,7 +60,7 @@ case "$STAGE" in
   audit)
     command -v mmseqs
     test -s "$WORK/split_manifest.json"
-    mkdir -p "$WORK/audit_tmp"
+    mkdir -p "$TMP_ROOT/mmseqs_cross_split"
     : > "$WORK/cross_split_hits.tsv"
     for query in train val test; do
       for target in train val test; do
@@ -72,7 +72,7 @@ case "$STAGE" in
         mmseqs easy-search \
           "$WORK/$query.proteins.fasta" "$WORK/$target.proteins.fasta" \
           "$WORK/audit-$query-$target.tsv" \
-          "$WORK/audit_tmp/$query-$target" \
+          "$TMP_ROOT/mmseqs_cross_split/$query-$target" \
           --format-output "query,target,pident,alnlen,qlen,tlen,qcov,tcov" \
           --min-seq-id 0.25 -c 0.0 -s 7.5 --max-seqs 100000 \
           --threads "$THREADS"
