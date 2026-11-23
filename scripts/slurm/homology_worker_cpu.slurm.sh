@@ -44,7 +44,7 @@ echo "Each query shard searches the FULL target protein database"
 for ((task=SLURM_ARRAY_TASK_ID; task<TOTAL; task+=WORKERS)); do
   elapsed=$(( $(date +%s) - start_epoch ))
   remaining=$(( 41100 - elapsed )) # stop 25 minutes before hard 11h50 limit
-  if (( remaining <= 0 )); then
+  if (( remaining <= 1800 )); then
     echo "BUDGET_REACHED: stop taking new shards; rerun the same submit command"
     break
   fi
