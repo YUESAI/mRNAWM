@@ -12,7 +12,7 @@ export FEATURE_CACHE_ROOT="$MRNAWM_ROOT/03_feature_cache"
 export CHECKPOINT_ROOT="$MRNAWM_ROOT/04_checkpoints"
 export BASELINES_ROOT="$MRNAWM_ROOT/05_baselines"
 export EVALUATIONS_ROOT="$MRNAWM_ROOT/06_evaluations"
-export LOG_ROOT="$MRNAWM_ROOT/07_logs"
+export LOG_ROOT="$MRNAWM_ROOT/logs"
 export TMP_ROOT="$MRNAWM_ROOT/08_tmp"
 export EXTERNAL_ROOT="$MRNAWM_ROOT/09_external_models"
 # Old runner interfaces may use DATA_ROOT; always point it to NEW experiment outputs.
