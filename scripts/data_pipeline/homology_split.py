@@ -118,6 +118,22 @@ class UnionFind:
         return True
 
 
+def validated_shard_hits(list_path: str) -> list[str]:
+    """Only consume a complete, hashed set of independent query shards."""
+    listing = Path(list_path)
+    manifest = listing.with_name("COMPLETE.json")
+    if not listing.is_file() or not manifest.is_file():
+        raise ValueError(f"shard search incomplete: {listing} / {manifest}")
+    data = json.loads(manifest.read_text())
+    paths = [line.strip() for line in listing.read_text().splitlines() if line.strip()]
+    if (data.get("status") != "completed"
+            or data.get("hits_list_sha256") != sha256_file(listing)
+            or len(paths) != data.get("jobs")
+            or len(set(paths)) != len(paths)):
+        raise ValueError(f"invalid completed shard set: {manifest}")
+    return paths
+
+
 def alignment_hits(paths, ids, main_id, main_cov, fragment_id, fragment_cov, fragment_aa):
     """Yield qualifying pairs, checking MMseqs2 output identifiers and ranges."""
     for path_string in paths:
@@ -355,7 +371,9 @@ def audit(args) -> None:
 
 
 def common_hit_args(parser):
-    parser.add_argument("--hits", action="append", required=True, help="MMseqs2 TSV; repeat for multiple searches.")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--hits", action="append", help="Individual MMseqs2 TSVs, repeatable.")
+    group.add_argument("--hits-list", help="Complete verified shard hit list.")
     parser.add_argument("--min-identity", type=float, default=0.30)
     parser.add_argument("--min-coverage", type=float, default=0.80)
     parser.add_argument("--fragment-identity", type=float, default=0.90)
@@ -393,6 +411,8 @@ def main():
                 and 0 <= args.fragment_identity <= 1 and 0 <= args.fragment_coverage <= 1
                 and args.fragment_min_aa > 0):
             parser.error("homology thresholds out of range")
+    if args.command in ("split", "audit") and args.hits_list:
+        args.hits = validated_shard_hits(args.hits_list)
     args.func(args)
 
 
