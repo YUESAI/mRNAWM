@@ -43,6 +43,28 @@ parallel() {
       --export="ALL,STAGE=$stage" "$job"
   fi
 }
+audit_arrays() {
+  local dep="$1" pair job_id list=""
+  # Six 256-task arrays avoid scheduler MaxArraySize restrictions.
+  # Limit each array to one task at a time: six concurrent audit tasks total.
+  for pair in 0 1 2 3 4 5; do
+    if [ -n "$dep" ]; then
+      job_id=$(sbatch --parsable --account=def-hup-ab --cpus-per-task=12 \
+        --dependency="afterok:$dep" --array="0-255%1" \
+        --output="$LOG_ROOT/audit_search-pair$pair-%A_%a.log" \
+        --error="$LOG_ROOT/audit_search-pair$pair-%A_%a.log" \
+        --export="ALL,STAGE=audit_search,AUDIT_PAIR_INDEX=$pair" "$job")
+    else
+      job_id=$(sbatch --parsable --account=def-hup-ab --cpus-per-task=12 \
+        --array="0-255%1" \
+        --output="$LOG_ROOT/audit_search-pair$pair-%A_%a.log" \
+        --error="$LOG_ROOT/audit_search-pair$pair-%A_%a.log" \
+        --export="ALL,STAGE=audit_search,AUDIT_PAIR_INDEX=$pair" "$job")
+    fi
+    if [ -n "$list" ]; then list="$list:$job_id"; else list="$job_id"; fi
+  done
+  printf '%s\n' "$list"
+}
 echo "NIBI INPUT: $SOURCE_TSV"
 echo "NEW OUTPUT: $SPLIT_ROOT"
 echo "LOGS: $LOG_ROOT"
@@ -55,7 +77,7 @@ case "$mode" in
     four=$(simple graph_verify "$three")
     five=$(simple split "$four")
     six=$(simple audit_prepare "$five")
-    seven=$(parallel audit_search "$six" "0-1535%6")
+    seven=$(audit_arrays "$six")
     eight=$(simple audit_verify "$seven")
     nine=$(simple audit "$eight")
     ;;
@@ -67,7 +89,7 @@ case "$mode" in
     four=$(simple graph_verify "$three")
     five=$(simple split "$four")
     six=$(simple audit_prepare "$five")
-    seven=$(parallel audit_search "$six" "0-1535%6")
+    seven=$(audit_arrays "$six")
     eight=$(simple audit_verify "$seven")
     nine=$(simple audit "$eight")
     ;;
@@ -75,7 +97,7 @@ case "$mode" in
     test -f "$SPLIT_ROOT/audit_shards_v1/READY.json" || {
       echo "ERROR: audit not prepared; cannot resume" >&2; exit 2;
     }
-    seven=$(parallel audit_search "" "0-1535%6")
+    seven=$(audit_arrays "")
     eight=$(simple audit_verify "$seven")
     nine=$(simple audit "$eight")
     ;;
