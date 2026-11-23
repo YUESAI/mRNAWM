@@ -44,9 +44,9 @@ python3 -m unittest discover -s tests -v
 bash scripts/submit_homology_cpu.sh
 ```
 
-The final command submits the ordered stages with `afterok` dependencies: protein FASTA → global DB/shards → **256 search array** → strict verify → split → cross-split DB/shards → **1536 audit array** → strict verify → final audit.
+The final command submits the ordered stages with `afterok` dependencies: protein FASTA → global DB/shards → **256 search array** → strict verify → split → cross-split DB/shards → **six 256-task audit arrays** → strict verify → final audit.
 
-**CPU allocation:** `--account=def-hup-ab`, **11:50:00** per task (Nibi 12-hour maximum). Parallel search/audit: 12 CPU cores × 6 GiB/core per task, up to 6 concurrent tasks (72 CPUs and 432 GiB of requested aggregate task memory). Single-process prepare/verify/split tasks request 4 CPU cores. Adjust concurrency only after observing Nibi scheduling and memory usage. No GPU is requested.
+**CPU allocation:** `--account=def-hup-ab`, **11:50:00** per task (Nibi 12-hour maximum). Parallel search/audit: 12 CPU cores × 6 GiB/core per task, up to 6 concurrent tasks (72 CPUs and 432 GiB of aggregate requested memory). The audit is submitted as six 256-task arrays (one active task per audit pair) to stay below scheduler array-size limits. Single-process prepare/verify/split tasks request 4 CPU cores. Adjust concurrency only after observing Nibi scheduling and memory usage. No GPU is requested.
 
 **Retry search after a shard times out:** completed shard checksums are verified and successful shards are skipped; no successful shards are deleted.
 
