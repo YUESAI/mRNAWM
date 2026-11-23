@@ -1,26 +1,24 @@
-# Nibi CPU submission: homology split
+# Nibi CPU Slurm — current
 
-The authoritative, current pipeline is the [root README](../README.md). All jobs run on Nibi, only on `mRNAWM/main`; no Dusky paths or partitions.
+**Single source of truth: [root README](../README.md).** All path constants live in [`scripts/config/paths.sh`](../scripts/config/paths.sh). Your repository checkout is already the working directory; no placeholder `cd` or `DATA_ROOT` assignment is necessary.
 
-**Resource policy:** the user-confirmed account is `rrg-hup`. CPU-only jobs never request `--gpus`. Alignment search and independent audit are parallelized using **32 CPUs × 6 GiB/CPU = 192 GiB/node** and a 12-hour limit. Prepare and split are mostly single-threaded: override to **4 CPUs × 6 GiB** at submission. Requests can be adjusted after real Nibi profiling.
+Run from the Nibi Git repository root:
 
 ```bash
-cd /path/to/mRNAWM
-export DATA_ROOT="${SCRATCH:-$HOME/scratch}/mRNAWM"
-test -s "$DATA_ROOT/normalized/all_refseq_mammalian_viral_unique.tsv"
-command -v mmseqs
-SCRIPT=scripts/slurm/submit_homology_split_cpu.slurm.sh
-
-J1=$(sbatch --parsable --cpus-per-task=4 --export=ALL,STAGE=prepare "$SCRIPT")
-J2=$(sbatch --parsable --dependency=afterok:$J1 --export=ALL,STAGE=search "$SCRIPT")
-J3=$(sbatch --parsable --cpus-per-task=4 --dependency=afterok:$J2 --export=ALL,STAGE=split "$SCRIPT")
-J4=$(sbatch --parsable --dependency=afterok:$J3 --export=ALL,STAGE=audit "$SCRIPT")
-echo "prepare=$J1 search=$J2 split=$J3 audit=$J4"
-squeue -u "$USER"
+git pull origin main
+bash scripts/init_mrnawm_workspace.sh
+bash scripts/submit_homology_cpu.sh
 ```
 
-Each stage starts only if the previous stage succeeds. The 32-core MMseqs2 search may exceed 12 hours for a large all-vs-all RefSeq protein set; monitor logs and Slurm accounting, change time/memory/resources if necessary, and keep the same split protocol.
+The first script creates `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/` and its staged directories, using the previous normalized TSV **read-only**. The submit script queues four ordered CPU tasks (prepare, 32-core MMseqs2 search, split, 32-core independent audit), using Nibi account `rrg-hup`. It never requests a GPU. Logs and outputs are isolated under the new mRNAWM subfolder.
 
-The output directory is `$DATA_ROOT/splits/homology_v1_seed3407/`. The essential validation artifacts are `split_manifest.json` and `leakage_audit.json`. An independent heuristic search cannot prove the absence of every remote homolog or protein-domain overlap.
+Verify outputs:
 
-The original `mRNA_pr` scripts used `def-hup-ab_cpu/base` or `def-hup-ab_gpu/gpu/l40s`, which must not be copied to Nibi. The GPU header supplied by the user is recorded in the root README strictly as a reference, not as a request to submit a GPU job.
+```bash
+source scripts/config/paths.sh
+cat "$SPLIT_ROOT/split_manifest.json"
+cat "$SPLIT_ROOT/leakage_audit.json"
+ls "$LOG_ROOT"
+```
+
+Full-data execution on Nibi has **not** been performed from this conversation. No stage is marked complete solely because code is committed.
