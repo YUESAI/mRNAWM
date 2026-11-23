@@ -80,9 +80,15 @@ case "$STAGE" in
       --output "audit_ready=$ROOT/audit_shards_v1/READY.json"
     ;;
   audit_search)
+    : "$AUDIT_PAIR_INDEX"
+    if [ "$AUDIT_PAIR_INDEX" -lt 0 ] || [ "$AUDIT_PAIR_INDEX" -gt 5 ]; then
+      echo "Invalid audit pair index: $AUDIT_PAIR_INDEX" >&2
+      exit 2
+    fi
+    task=$(( AUDIT_PAIR_INDEX * SHARDS + SLURM_ARRAY_TASK_ID ))
     "$PYTHON" scripts/data_pipeline/sharded_mmseqs.py search --kind audit \
       --root "$ROOT" --tmp-root "$TMP" --shards "$SHARDS" \
-      --task "$SLURM_ARRAY_TASK_ID" --mmseqs "$MMSEQS" --threads "$THREADS"
+      --task "$task" --mmseqs "$MMSEQS" --threads "$THREADS"
     ;;
   audit_verify)
     "$PYTHON" scripts/data_pipeline/sharded_mmseqs.py verify --kind audit \
