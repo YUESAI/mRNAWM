@@ -16,7 +16,11 @@ if [ "$STAGE" != graph_search ] && [ "$STAGE" != audit_search ]; then
   echo "Invalid worker stage $STAGE" >&2
   exit 2
 fi
-WORKERS=4
+WORKERS="${WORKER_COUNT:-4}"
+if ! [[ "$WORKERS" =~ ^[1-4]$ ]]; then
+  echo "WORKER_COUNT must be 1-4" >&2
+  exit 2
+fi
 THREADS="$SLURM_CPUS_PER_TASK"
 TOTAL=256
 KIND=graph
