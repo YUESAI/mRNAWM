@@ -1,15 +1,15 @@
 #!/bin/bash
 # mRNAWM homology split: Nibi CPU stages, following mRNA_pr's CPU Slurm layout.
-# The old def-hup-ab_cpu/base settings are Dusky-specific; account is supplied
-# with sbatch --account=... for the user's actual Nibi allocation.
+# Nibi allocation supplied by user: rrg-hup; GPU is deliberately NOT requested.
+#SBATCH --account=rrg-hup
 #SBATCH --job-name=mrnawm-split
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --time=11:50:00
-#SBATCH --output=slurm-mrnawm-split-%j.out
-#SBATCH --error=slurm-mrnawm-split-%j.err
+#SBATCH --mem-per-cpu=6G
+#SBATCH --time=12:00:00
+#SBATCH --output=slurm-mrnawm-split-%j.log
+#SBATCH --error=slurm-mrnawm-split-%j.log
 
 set -euo pipefail
 : "$STAGE"
