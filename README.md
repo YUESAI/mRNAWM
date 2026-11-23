@@ -31,36 +31,42 @@ Source RefSeq data (already downloaded and normalized; **do not overwrite**):
 
 Every completed non-array step writes input/output paths, SHA-256, Git commit and Slurm Job ID to `mRNAWM/00_source/stage_records/*_v2.json`. **Only a passing final audit qualifies the split for model training.**
 
-## Nibi — copy/paste commands from your cloned repo
+## Nibi — exact commands (quota-safe, restartable)
 
-The old one-job all-vs-all MMseqs2 search **timed out** (Job `28555031` on 2026-11-23). It is **not part of the active workflow**. This new run uses a fresh `homology_sharded_v2_seed3407` output directory and does not mix partially produced old results.
+The old one-job all-vs-all search was **TIMEOUT** (Job `28555031`). The first sharded launcher then produced `AssocMaxSubmitJobLimit` because Slurm counts pending array tasks toward association submission quotas: `%6` limits concurrency, **not the number submitted**. **Both old launchers are retired.**
 
-Prepare the environment with `mmseqs` and `python3` on PATH. Then, while inside the Git repo:
+From the current `mRNAWM` Git directory on Nibi:
 
 ```bash
 git pull --ff-only origin main
-bash scripts/init_mrnawm_workspace.sh
 python3 -m unittest discover -s tests -v
+
+# Check prior tasks before submitting new work.
+squeue -u "$USER" -o "%.18i %.22j %.10T %.30R"
+
+# Submit ONLY the next unfinished step or a bounded search batch.
 bash scripts/submit_homology_cpu.sh
 ```
 
-The final command submits the ordered stages with `afterok` dependencies: protein FASTA → global DB/shards → **256 search array** → strict verify → split → cross-split DB/shards → **six 256-task audit arrays** → strict verify → final audit.
+**Run the same final command again after its submitted job(s) finish.** This is intentionally step-by-step, not a batch of thousands of future jobs. It checks the actual output markers and automatically chooses `protein → graph_prepare → graph_search → graph_verify → split → audit_prepare → audit_search → audit_verify → audit`. It automatically skips successful shard results. No manual selection of stage or checkpoint paths is necessary.
 
-**CPU allocation:** `--account=def-hup-ab`, **11:50:00** per task (Nibi 12-hour maximum). Parallel search/audit: 12 CPU cores × 6 GiB/core per task, up to 6 concurrent tasks (72 CPUs and 432 GiB of aggregate requested memory). The audit is submitted as six 256-task arrays (one active task per audit pair) to stay below scheduler array-size limits. Single-process prepare/verify/split tasks request 4 CPU cores. Adjust concurrency only after observing Nibi scheduling and memory usage. No GPU is requested.
+- A *search stage* queues **up to four CPU workers**, not 256 or 1536 Slurm tasks; if Nibi rejects four, it tries two and then one. Each worker processes many shards sequentially and stops taking new shards before the 12-hour limit.
+- Other stages submit **one job only**, under the confirmed account `def-hup-ab`.
+- All jobs request `11:50:00` or less. Search workers request 12 CPUs / 72 GiB each; up to 48 CPUs active when four workers can be scheduled. A single-process stage requests 4 CPUs.
+- A complete batch may still leave unfinished shards. Just run `bash scripts/submit_homology_cpu.sh` again after the batch exits; do not submit while the previous batch is running.
+- If a single shard repeatedly exceeds its permitted time, **stop** and increase query sharding in a separate versioned run; no incomplete shard is marked complete.
+- The launcher refuses to queue work while any job named `wm-homology` (old launcher) or `wm-shard-worker` (new launcher) is still queued/running. **Do not automatically cancel unrelated jobs.**
+- If account quota is still full even for a one-worker array, it aborts with no future tasks queued. Check `squeue`, wait for capacity, and rerun the same command.
 
-**Retry search after a shard times out:** completed shard checksums are verified and successful shards are skipped; no successful shards are deleted.
+**Input:** `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/00_source/normalized.tsv` (read-only symlink).
 
-```bash
-bash scripts/submit_homology_cpu.sh resume-graph
-```
+**Outputs:** `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/01_split/homology_sharded_v2_seed3407/`.
 
-**Retry audit after a shard times out:**
+**Logs:** `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/logs/`.
 
-```bash
-bash scripts/submit_homology_cpu.sh resume-audit
-```
+**Submission history (stage, Job ID, Git SHA, input/output paths):** `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/00_source/submissions.tsv`.
 
-Do not submit either retry mode while the same array is still running. If a *single* shard repeatedly times out, reduce its query count (new versioned settings) rather than claiming its partial result is complete. If the split itself fails due to giant transitive components or imbalance, inspect the clusters instead of relaxing the thresholds to force a split.
+Note that the retired launcher's `00_source/last_submission.txt` might contain incomplete, failed queue submissions; it is **not** a completion report. Do not rely on it for the current run.
 
 ## Logs, job status, and output inspection
 
@@ -68,7 +74,7 @@ Do not submit either retry mode while the same array is still running. If a *sin
 
 ```bash
 source scripts/config/paths.sh
-cat "$MRNAWM_ROOT/00_source/last_submission.txt"
+cat "$MRNAWM_ROOT/00_source/submissions.tsv"
 ls -lhtr "$LOG_ROOT" | tail -20
 sacct -u "$USER" -S 2026-11-23 \
   --format=JobID,JobName%22,State%20,ExitCode,Elapsed,Timelimit,MaxRSS
@@ -87,4 +93,4 @@ The last three files only exist after their stages finish. `COMPLETED` plus a re
 - Save frozen input checksums, versions, full set of completed query shard manifests, and all split outputs. The final test set must be used only after the split protocol is fixed.
 - GPU jobs are **not requested** unless you explicitly ask. The user-provided GPU header is reference-only (`--gpus=h100_2g.20gb:1`) and cannot be used with the unauthorized `rrg-hup` account without allocation permission.
 
-**Execution status:** code is committed, but the new sharded experiment has **not yet been submitted or completed on Nibi**. The earlier job was TIMEOUT; no old result is treated as a successful cluster.
+**Execution status:** directory initialization succeeded; the old one-job search timed out and the first all-at-once array launcher hit Nibi submission limits. The new quota-safe launcher is committed but has **not** been run on Nibi through this chat. No final split or independent leakage audit is confirmed.
