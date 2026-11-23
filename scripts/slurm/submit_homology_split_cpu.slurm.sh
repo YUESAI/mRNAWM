@@ -1,7 +1,7 @@
 #!/bin/bash
 # mRNAWM homology split: Nibi CPU stages, following mRNA_pr's CPU Slurm layout.
-# Nibi allocation supplied by user: rrg-hup; GPU is deliberately NOT requested.
-#SBATCH --account=rrg-hup
+# Nibi CPU account confirmed by sbatch: def-hup-ab. No GPU requested.
+#SBATCH --account=def-hup-ab
 #SBATCH --job-name=mrnawm-split
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
