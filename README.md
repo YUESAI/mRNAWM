@@ -1,117 +1,90 @@
-# mRNAWM — full-length mRNA world model
+# mRNAWM — reproducible full-length mRNA design
 
-**Active repository:** `YUESAI/mRNAWM`, **main only**. Run everything on **Nibi** (CPU Slurm account `def-hup-ab`), from the directory where you have already cloned/opened this Git repo. `mRNA_pr` is **read-only**. **Seed = 3407** across split, model, baselines and evaluation.
+**Only active code: `YUESAI/mRNAWM/main`.** `mRNA_pr` (including its `v1` branch) is read-only reference. All computing happens on **Nibi**. **Seed = 3407.** Training and baseline algorithms remain unchanged; only dataset homology splitting and consequent reruns are being rebuilt.
 
-## Canonical Nibi data paths (never guess a path)
+## Canonical storage and pipeline
 
-**Existing legacy input (read-only):** `/scratch/ylong66/data/mRNA_pr_wm/`.
-
-**All new experiment artifacts:** `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/`.
-
-| Stage | Exact output location | Status |
-|---|---|---|
-| 00 — Input provenance | `mRNAWM/00_source/` (symlink and SHA-256 pointing to legacy `normalized/`) | Initialization script ready; not run |
-| 01 — Homology split | `mRNAWM/01_split/homology_v1_seed3407/` | Code ready; Nibi run pending |
-| 02 — Model-ready data | `mRNAWM/02_model_data/` | Migration pending |
-| 03 — CodonTransformer features | `mRNAWM/03_feature_cache/` | Migration pending |
-| 04 — mRNAWM checkpoints | `mRNAWM/04_checkpoints/` | Training code migration pending |
-| 05 — Baseline predictions | `mRNAWM/05_baselines/` | Migration pending |
-| 06 — Model and baseline evaluations | `mRNAWM/06_evaluations/` | Migration pending |
-| 07 — Slurm/task logs | `mRNAWM/07_logs/` | Script ready |
-| 08 — Temporary files | `mRNAWM/08_tmp/` | Script ready |
-| 09 — External baseline weights | `mRNAWM/09_external_models/` | Migration pending |
-
-The absolute path of every stage is defined **once** in [`scripts/config/paths.sh`](scripts/config/paths.sh). New scripts must load it. Never write newly generated splits, feature caches, baselines, or checkpoints into the original legacy directories.
-
-## Run from the Git repo directory
-
-### Stage 00 — initialize folders; reuse original normalized data
-
-```bash
-git pull origin main
-bash scripts/init_mrnawm_workspace.sh
-```
-
-This creates the stage folders and a **symlink** from `00_source/normalized.tsv` to the original:
+Source RefSeq data (already downloaded and normalized; **do not overwrite**):
 
 ```text
 /scratch/ylong66/data/mRNA_pr_wm/normalized/all_refseq_mammalian_viral_unique.tsv
 ```
 
-It writes `00_source/source.sha256` to lock provenance and refuses to proceed if the source file is missing or later changes. **It does not redownload, recalculate, delete, move or edit the old data.** If the old normalized file's name differs, first inspect the original `normalized/` directory and deliberately update the single configuration file; do not silently substitute another dataset.
+**All new experiments** are isolated at `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/`.
 
-### Stage 01 — submit CPU protein clustering, split and leakage audit
+| Step | Exact input | Exact output | Status |
+|---|---|---|---|
+| 00. Input freeze | Previous `normalized/all_refseq_mammalian_viral_unique.tsv` | `mRNAWM/00_source/normalized.tsv` (symlink), `source.sha256` | Completed on Nibi (user log) |
+| 01A. Unique proteins | `00_source/normalized.tsv` | `01_split/homology_sharded_v2_seed3407/unique_proteins.fasta`, `prepare.json` | Code ready |
+| 01B. Query shards + global DB | `unique_proteins.fasta` | `01_split/homology_sharded_v2_seed3407/graph_shards_v1/READY.json`, query FASTAs and full target DB | Code ready |
+| 01C. Homology search | 256 query shards × complete target DB | `graph_shards_v1/hits/full/part_0000.tsv` … `part_0255.tsv`, `.done.json` per shard | Code ready |
+| 01D. Verify search | All 256 complete hashed shard outputs | `graph_shards_v1/COMPLETE.json`, `hits.list` | Code ready |
+| 01E. Split | `00_source/normalized.tsv` + verified `hits.list` | `01_split/homology_sharded_v2_seed3407/{train,val,test}.tsv`, `split_manifest.json`, `clusters.tsv`, `protein_assignments.tsv` | Code ready |
+| 01F. Audit queries/DB | `{train,val,test}.proteins.fasta` | `audit_shards_v1/READY.json`, complete per-split target DBs | Code ready |
+| 01G. Audit searches | Six directed cross-split searches, each with 256 query shards | `audit_shards_v1/hits/<split_pair>/part_*.tsv`, completion markers | Code ready |
+| 01H. Final audit | Verified 1536 audit shard outputs + split TSVs | `audit_shards_v1/COMPLETE.json`, `hits.list`, `leakage_audit.json` | Code ready |
+| 02. Model records | Final audited new split | `mRNAWM/02_model_data/` | Not migrated |
+| 03. Frozen protein features | Stage 02 proteins | `mRNAWM/03_feature_cache/` | Not migrated |
+| 04. mRNAWM training | New train/val + feature cache | `mRNAWM/04_checkpoints/` | Not migrated |
+| 05. Baselines | New fixed test manifest | `mRNAWM/05_baselines/` | Not migrated |
+| 06. Evaluation | Same test IDs for model and baselines | `mRNAWM/06_evaluations/` | Not migrated |
 
-After Nibi's Python and MMseqs2 are available on PATH:
+Every completed non-array step writes input/output paths, SHA-256, Git commit and Slurm Job ID to `mRNAWM/00_source/stage_records/*_v2.json`. **Only a passing final audit qualifies the split for model training.**
+
+## Nibi — copy/paste commands from your cloned repo
+
+The old one-job all-vs-all MMseqs2 search **timed out** (Job `28555031` on 2026-11-23). It is **not part of the active workflow**. This new run uses a fresh `homology_sharded_v2_seed3407` output directory and does not mix partially produced old results.
+
+Prepare the environment with `mmseqs` and `python3` on PATH. Then, while inside the Git repo:
 
 ```bash
+git pull --ff-only origin main
+bash scripts/init_mrnawm_workspace.sh
+python3 -m unittest discover -s tests -v
 bash scripts/submit_homology_cpu.sh
 ```
 
-The command submits four CPU Slurm jobs under **`def-hup-ab`** in order (`afterok`): `prepare → search → split → audit`. No GPU job is submitted. Prepare/split request 4 CPUs; MMseqs2 search/audit request 32 CPUs, with 6 GB per CPU and up to 12 hours per job. Outputs and logs are always in the canonical stage folders above.
+The final command submits the ordered stages with `afterok` dependencies: protein FASTA → global DB/shards → **256 search array** → strict verify → split → cross-split DB/shards → **1536 audit array** → strict verify → final audit.
 
-**Exact per-stage input/output manifests** (absolute paths, sizes, SHA-256 hashes, Git commit and Slurm Job ID) are saved only after successful execution in `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/00_source/stage_records/{prepare,search,split,audit}.json`. Every downstream stage reads the canonical paths defined in `scripts/config/paths.sh` and validates prerequisites. The output contract is:
+**CPU allocation:** `--account=def-hup-ab`, **11:50:00** per task (Nibi 12-hour maximum). Parallel search/audit: 12 CPU cores × 6 GiB/core per task, up to 6 concurrent tasks (72 CPUs and 432 GiB of requested aggregate task memory). Single-process prepare/verify/split tasks request 4 CPU cores. Adjust concurrency only after observing Nibi scheduling and memory usage. No GPU is requested.
 
-| Completed stage | Exact outputs consumed by the next stage |
-|---|---|
-| Prepare | `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/01_split/homology_v1_seed3407/unique_proteins.fasta`; `prepare.json` |
-| Search | `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/01_split/homology_v1_seed3407/all_vs_all.tsv`; `mmseqs_version.txt` |
-| Split | `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/01_split/homology_v1_seed3407/{train,val,test}.tsv`; `protein_assignments.tsv`; `clusters.tsv`; `split_manifest.json` |
-| Audit | `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/01_split/homology_v1_seed3407/leakage_audit.json`; `cross_split_hits.tsv` |
+**Retry search after a shard times out:** completed shard checksums are verified and successful shards are skipped; no successful shards are deleted.
 
-Verify after completion:
+```bash
+bash scripts/submit_homology_cpu.sh resume-graph
+```
+
+**Retry audit after a shard times out:**
+
+```bash
+bash scripts/submit_homology_cpu.sh resume-audit
+```
+
+Do not submit either retry mode while the same array is still running. If a *single* shard repeatedly times out, reduce its query count (new versioned settings) rather than claiming its partial result is complete. If the split itself fails due to giant transitive components or imbalance, inspect the clusters instead of relaxing the thresholds to force a split.
+
+## Logs, job status, and output inspection
+
+`07_logs` was an arbitrary directory-order number, **not pipeline stage 07**. New successful and failed jobs log to the clearer `mRNAWM/logs/` directory. Older failed logs in `07_logs/` are historical evidence and are not removed automatically.
 
 ```bash
 source scripts/config/paths.sh
-cat "$SPLIT_ROOT/split_manifest.json"
+cat "$MRNAWM_ROOT/00_source/last_submission.txt"
+ls -lhtr "$LOG_ROOT" | tail -20
+sacct -u "$USER" -S 2026-11-23 \
+  --format=JobID,JobName%22,State%20,ExitCode,Elapsed,Timelimit,MaxRSS
+cat "$SPLIT_ROOT/graph_shards_v1/COMPLETE.json"
+cat "$SPLIT_ROOT/audit_shards_v1/COMPLETE.json"
 cat "$SPLIT_ROOT/leakage_audit.json"
-ls -lh "$SPLIT_ROOT"/{train,val,test}.tsv
-ls -lh "$LOG_ROOT"
-cat "$MRNAWM_ROOT/00_source/stage_records/split.json"
-cat "$MRNAWM_ROOT/00_source/stage_records/audit.json"
 ```
 
-Split protocol: 80/10/10, seed 3407, MMseqs2 alignment plus connected components; 30% identity + 80% reciprocal coverage, with an additional high-identity fragment guard. Cross-split alignment audit is mandatory. For methodological details and caveats, see [`docs/HOMOLOGY_SPLIT.md`](docs/HOMOLOGY_SPLIT.md). A clean heuristic search does not guarantee the absence of all remote homology.
+The last three files only exist after their stages finish. `COMPLETED` plus a recorded pass is success; `TIMEOUT`, `FAILED`, `OUT_OF_MEMORY` or missing success markers is not. The Slurm submission script saves the exact job IDs under `00_source/last_submission.txt`.
 
-### Stages 02–06 — model training, baselines and evaluation
+## Methodological integrity
 
-**Not migrated or run yet.** The approved run sequence is: validate frozen split → prepare model records → build and check CodonTransformer feature coverage → train the *unchanged* mRNAWM → create matched test manifest → rerun *unchanged* baselines → evaluate on identical records/metrics → export results.
+- **Search graph:** all query shards align against the **complete global protein database** (never independently cluster the shards). Qualifying alignment edges are combined into global connected components.
+- **Scientific filtering:** primary identity ≥30% plus 80% coverage of both sequences; fragment guard identity ≥90%, aligned length ≥80 aa, ≥80% coverage of one sequence. Unlike the `mRNA_pr/v1` reciprocal-only 30% protocol, these secondary edges are deliberate and may change component sizes.
+- **Audit:** independent all-direction cross-split similarity searches, with the same scientific thresholds. Check `leakage_audit.json` `"passed": true`. MMseqs2 is heuristic and `--max-seqs` finite; successful audits do not prove the absence of all remote or domain-level homology.
+- Save frozen input checksums, versions, full set of completed query shard manifests, and all split outputs. The final test set must be used only after the split protocol is fixed.
+- GPU jobs are **not requested** unless you explicitly ask. The user-provided GPU header is reference-only (`--gpus=h100_2g.20gb:1`) and cannot be used with the unauthorized `rrg-hup` account without allocation permission.
 
-When these stages are migrated, **every runnable command goes in this README**, with its hard-coded canonical output path via `paths.sh`, exact Slurm script, resource request, checkpoint name and expected result filenames. Do not call old Dusky runners or mix old checkpoints with this experiment. Report all versions, settings and hashes before inspecting test outcomes.
-
-## Standard Nibi Slurm headers
-
-**CPU (default for new tasks, confirmed on Nibi):**
-```bash
-#!/bin/bash
-#SBATCH --account=def-hup-ab
-#SBATCH --cpus-per-task=32
-#SBATCH --mem-per-cpu=6G
-#SBATCH --time=12:00:00
-#SBATCH --output=slurm-%j.log
-#SBATCH --error=slurm-%j.log
-```
-
-**GPU (reference only, user-provided header; `rrg-hup` membership currently denied on Nibi):**
-```bash
-#!/bin/bash
-#SBATCH --account=rrg-hup
-#SBATCH --gpus=h100_2g.20gb:1
-#SBATCH --mem-per-cpu=6G
-#SBATCH --time=12:00:00
-#SBATCH --cpus-per-task=16
-#SBATCH --output=slurm-%j.log
-#SBATCH --error=slurm-%j.log
-```
-
-The current authorized CPU account is `def-hup-ab`; the Nibi scheduler rejected `rrg-hup` for this user. The GPU header is retained solely as a reference, not as a confirmed usable allocation. Adjust CPU counts to a task's real parallelism. GPU example requests an H100 MIG slice, **not** the entire H100. Never carry `base/gpu/l40s` partitions or old Dusky account settings forward.
-
-## Reproducibility rules
-
-- **Never modify `mRNA_pr`; develop directly on `mRNAWM/main`.**
-- Keep source download/normalization and model/baseline algorithms unchanged; only redesign the homology split and its validation.
-- Freeze the normalized input checksum, MMseqs2 version/search settings, component IDs, split manifest, independent audit, Git SHA, training configuration, feature coverage, checkpoint IDs, and matched test manifest.
-- **New stage = stage-specific folder + Slurm job + exact command documented here + output verification.** No abandoned paths or deprecated workflow steps.
-- Unit tests: `python3 -m unittest discover -s tests -v`.
-
-**Execution status:** Nibi workspace initialization succeeded (user log; source SHA-256 `cbedb5282fbc9a72e60c1b0469ffe5324f795a7908d7ceecc0c22c02e53fd2fe`). Initial CPU submission was blocked by missing MMseqs2; subsequent submission was rejected because `rrg-hup` was not authorized. CPU account corrected to `def-hup-ab` (maximum 12-hour request). No real-data split, training or evaluation has completed.
+**Execution status:** code is committed, but the new sharded experiment has **not yet been submitted or completed on Nibi**. The earlier job was TIMEOUT; no old result is treated as a successful cluster.
