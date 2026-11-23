@@ -28,7 +28,7 @@ python3 -c "import Bio; print(Bio.__version__)"
 sacctmgr show associations user="$USER" format=Account,Partition -P
 ```
 
-Set `NIBI_ACCOUNT` to an **account you can actually use**. The account identifiers and `base/gpu/l40s` resources found in the old `mRNA_pr` scripts are Dusky-specific examples, **not confirmed Nibi account/partition/GPU values**.
+Use your confirmed Nibi allocation **`rrg-hup`**. The `base/gpu/l40s` resource names in the old `mRNA_pr` scripts are Dusky-specific and must not be reused.
 
 ### 1. Download and normalize — same data pipeline
 
@@ -40,15 +40,14 @@ $DATA_ROOT/normalized/all_refseq_mammalian_viral_unique.tsv
 
 ### 2–3. Submit homology split & leakage audit — CPU by default
 
-From the repository root, **only after the normalized input exists**, run these Nibi commands. Four jobs are linked with `afterok`, so a failed stage blocks its dependents. Default request: **8 CPU cores, 64 GiB RAM, 11h50m per stage**; this is a first pass, not a proven full-dataset MMseqs2 resource estimate.
+From the repository root, **only after the normalized input exists**, run these Nibi commands. Four jobs are linked with `afterok`, so a failed stage blocks its dependents. The search and audit stages request **32 CPU cores, 6 GiB per CPU (192 GiB total), 12 hours**, following your Nibi header. Small sequential prepare/split stages override this with 4 CPU cores to avoid wasting allocation. These are initial requests, not proven full-dataset resource requirements.
 
 ```bash
-export NIBI_ACCOUNT=YOUR_NIBI_ALLOCATION
 SCRIPT=scripts/slurm/submit_homology_split_cpu.slurm.sh
-J1=$(sbatch --parsable --account="$NIBI_ACCOUNT" --export=ALL,STAGE=prepare "$SCRIPT")
-J2=$(sbatch --parsable --account="$NIBI_ACCOUNT" --dependency=afterok:$J1 --export=ALL,STAGE=search "$SCRIPT")
-J3=$(sbatch --parsable --account="$NIBI_ACCOUNT" --dependency=afterok:$J2 --export=ALL,STAGE=split "$SCRIPT")
-J4=$(sbatch --parsable --account="$NIBI_ACCOUNT" --dependency=afterok:$J3 --export=ALL,STAGE=audit "$SCRIPT")
+J1=$(sbatch --parsable --cpus-per-task=4 --export=ALL,STAGE=prepare "$SCRIPT")
+J2=$(sbatch --parsable --dependency=afterok:$J1 --export=ALL,STAGE=search "$SCRIPT")
+J3=$(sbatch --parsable --cpus-per-task=4 --dependency=afterok:$J2 --export=ALL,STAGE=split "$SCRIPT")
+J4=$(sbatch --parsable --dependency=afterok:$J3 --export=ALL,STAGE=audit "$SCRIPT")
 echo "prepare=$J1 search=$J2 split=$J3 audit=$J4"
 squeue -u "$USER"
 ```
@@ -61,36 +60,36 @@ Expected outputs at `$DATA_ROOT/splits/homology_v1_seed3407/`: `train.tsv`, `val
 
 The **structure** and CPU requests follow the working `mRNA_pr` scripts (`run_codonwm_v3_cache_cpu.sh`, `run_mrnawm_train.sh`, and its TAA splitting job). Those scripts still contain `def-hup-ab_cpu/base`, `def-hup-ab_gpu/gpu`, `--gres=gpu:l40s:1`, and old workspace/conda paths: **do not copy these to Nibi**.
 
-**CPU (default):**
+**CPU (default; compute-heavy search/audit):**
 
 ```bash
 #!/bin/bash
+#SBATCH --account=rrg-hup
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --time=11:50:00
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
-# submit with sbatch --account="$NIBI_ACCOUNT" script.sh
+#SBATCH --cpus-per-task=32
+#SBATCH --mem-per-cpu=6G
+#SBATCH --time=12:00:00
+#SBATCH --output=slurm-%j.log
+#SBATCH --error=slurm-%j.log
+# submit with sbatch script.sh
 ```
 
 **GPU (reference template only; do not submit unless explicitly asked):**
 
 ```bash
 #!/bin/bash
-#SBATCH --nodes=1
-#SBATCH --ntasks=1
-#SBATCH --cpus-per-task=8
-#SBATCH --mem=64G
-#SBATCH --time=11:50:00
-#SBATCH --gpus-per-node=h100:1
-#SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
-# submit with sbatch --account="$NIBI_ACCOUNT" script.sh
+#SBATCH --account=rrg-hup
+#SBATCH --gpus=h100_2g.20gb:1
+#SBATCH --mem-per-cpu=6G
+#SBATCH --time=12:00:00
+#SBATCH --cpus-per-task=16
+#SBATCH --output=slurm-%j.log
+#SBATCH --error=slurm-%j.log
+# reference only; do not submit GPU job without user request
 ```
 
-The H100 syntax is a **proposed Nibi GPU template**, not a value verified from `mRNA_pr` or your Nibi allocation. Confirm permitted GPU resources and QoS on Nibi before requesting one.
+The GPU header above is **user-supplied from Nibi**, not an inference from the old scripts. It requests one `h100_2g.20gb` GPU slice, not a whole H100.
 
 ## Non-negotiable experiment rules
 
@@ -98,7 +97,7 @@ The H100 syntax is a **proposed Nibi GPU template**, not a value verified from `
 - Seed **3407** explicitly for split/training/sampling/evaluation; the old evaluation default was not 3407.
 - Preserve all original transcript/ORF/UTR records within a protein homology component. Freeze input and output checksums and fixed held-out record IDs before training.
 - Audit exact and homology overlaps, MMseqs2 coverage/search-cap limits, cluster sizes and dataset proportions. Record software versions, split manifest, feature coverage, checkpoint and Git SHA.
-- Give a **CPU Slurm script plus exact sbatch submission commands** whenever writing code to run on Nibi; give GPU commands only on request.
+- Give a **CPU Slurm script plus exact sbatch submission commands** whenever writing code to run on Nibi; give GPU commands only on request. Use more CPU cores for parallel tools, fewer for single-threaded stages.
 - Unit tests: `python3 -m unittest discover -s tests -v`.
 
 **Current execution status:** synthetic split tests passed in GitHub Actions; no production Nibi data split, model training, baseline generation or evaluation has run through this chat.
