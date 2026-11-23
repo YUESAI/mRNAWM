@@ -48,7 +48,16 @@ After Nibi's Python and MMseqs2 are available on PATH:
 bash scripts/submit_homology_cpu.sh
 ```
 
-The command submits four CPU Slurm jobs in order (`afterok`): `prepare → search → split → audit`. No GPU job is submitted. Prepare/split request 4 CPUs; MMseqs2 search/audit request 32 CPUs, with 6 GB per CPU and up to 12 hours per job. Outputs and logs are always in the canonical stage folders above.
+The command submits four CPU Slurm jobs under **`def-hup-ab`** in order (`afterok`): `prepare → search → split → audit`. No GPU job is submitted. Prepare/split request 4 CPUs; MMseqs2 search/audit request 32 CPUs, with 6 GB per CPU and up to 12 hours per job. Outputs and logs are always in the canonical stage folders above.
+
+**Exact per-stage input/output manifests** (absolute paths, sizes, SHA-256 hashes, Git commit and Slurm Job ID) are saved only after successful execution in `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/00_source/stage_records/{prepare,search,split,audit}.json`. Every downstream stage reads the canonical paths defined in `scripts/config/paths.sh` and validates prerequisites. The output contract is:
+
+| Completed stage | Exact outputs consumed by the next stage |
+|---|---|
+| Prepare | `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/01_split/homology_v1_seed3407/unique_proteins.fasta`; `prepare.json` |
+| Search | `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/01_split/homology_v1_seed3407/all_vs_all.tsv`; `mmseqs_version.txt` |
+| Split | `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/01_split/homology_v1_seed3407/{train,val,test}.tsv`; `protein_assignments.tsv`; `clusters.tsv`; `split_manifest.json` |
+| Audit | `/scratch/ylong66/data/mRNA_pr_wm/mRNAWM/01_split/homology_v1_seed3407/leakage_audit.json`; `cross_split_hits.tsv` |
 
 Verify after completion:
 
@@ -58,6 +67,8 @@ cat "$SPLIT_ROOT/split_manifest.json"
 cat "$SPLIT_ROOT/leakage_audit.json"
 ls -lh "$SPLIT_ROOT"/{train,val,test}.tsv
 ls -lh "$LOG_ROOT"
+cat "$MRNAWM_ROOT/00_source/stage_records/split.json"
+cat "$MRNAWM_ROOT/00_source/stage_records/audit.json"
 ```
 
 Split protocol: 80/10/10, seed 3407, MMseqs2 alignment plus connected components; 30% identity + 80% reciprocal coverage, with an additional high-identity fragment guard. Cross-split alignment audit is mandatory. For methodological details and caveats, see [`docs/HOMOLOGY_SPLIT.md`](docs/HOMOLOGY_SPLIT.md). A clean heuristic search does not guarantee the absence of all remote homology.
@@ -103,4 +114,4 @@ The current authorized CPU account is `def-hup-ab`; the Nibi scheduler rejected 
 - **New stage = stage-specific folder + Slurm job + exact command documented here + output verification.** No abandoned paths or deprecated workflow steps.
 - Unit tests: `python3 -m unittest discover -s tests -v`.
 
-**Execution status:** Nibi workspace initialization succeeded (user log; source SHA-256 `cbedb5282fbc9a72e60c1b0469ffe5324f795a7908d7ceecc0c22c02e53fd2fe`). Initial CPU submission was blocked by missing MMseqs2; subsequent submission was rejected because `rrg-hup` was not authorized. CPU account corrected to `def-hup-ab`. No real-data split, training or evaluation has completed.
+**Execution status:** Nibi workspace initialization succeeded (user log; source SHA-256 `cbedb5282fbc9a72e60c1b0469ffe5324f795a7908d7ceecc0c22c02e53fd2fe`). Initial CPU submission was blocked by missing MMseqs2; subsequent submission was rejected because `rrg-hup` was not authorized. CPU account corrected to `def-hup-ab` (maximum 12-hour request). No real-data split, training or evaluation has completed.
