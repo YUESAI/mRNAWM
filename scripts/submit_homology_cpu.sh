@@ -14,14 +14,15 @@ command -v mmseqs >/dev/null || {
 }
 command -v python3 >/dev/null || { echo "ERROR: python3 unavailable" >&2; exit 2; }
 script=scripts/slurm/submit_homology_split_cpu.slurm.sh
+log_args=(--output="$LOG_ROOT/homology-%x-%j.log" --error="$LOG_ROOT/homology-%x-%j.log")
 
 # Source preparation and Python splitting are not 32-core operations.
-prepare_id="$(sbatch --parsable --cpus-per-task=4 --export=ALL,STAGE=prepare "$script")"
-search_id="$(sbatch --parsable --dependency=afterok:"$prepare_id" \
+prepare_id="$(sbatch --parsable "${log_args[@]}" --cpus-per-task=4 --export=ALL,STAGE=prepare "$script")"
+search_id="$(sbatch --parsable "${log_args[@]}" --dependency=afterok:"$prepare_id" \
   --export=ALL,STAGE=search "$script")"
-split_id="$(sbatch --parsable --cpus-per-task=4 \
+split_id="$(sbatch --parsable "${log_args[@]}" --cpus-per-task=4 \
   --dependency=afterok:"$search_id" --export=ALL,STAGE=split "$script")"
-audit_id="$(sbatch --parsable --dependency=afterok:"$split_id" \
+audit_id="$(sbatch --parsable "${log_args[@]}" --dependency=afterok:"$split_id" \
   --export=ALL,STAGE=audit "$script")"
 
 printf 'Nibi CPU jobs\nprepare: %s\nsearch: %s\nsplit: %s\naudit: %s\n' \
