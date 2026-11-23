@@ -95,4 +95,45 @@ case "$STAGE" in
     exit 2
     ;;
 esac
+# Manifest is written only after successful execution and artifact verification.
+record_dir="$MRNAWM_ROOT/00_source/stage_records"
+mkdir -p "$record_dir"
+case "$STAGE" in
+  prepare)
+    "$PYTHON_BIN" scripts/pipeline/record_stage.py --stage prepare \
+      --record "$record_dir/prepare.json" \
+      --input "normalized=$INPUT" \
+      --output "unique_proteins_fasta=$WORK/unique_proteins.fasta" \
+      --output "prepare_manifest=$WORK/prepare.json"
+    ;;
+  search)
+    "$PYTHON_BIN" scripts/pipeline/record_stage.py --stage search \
+      --record "$record_dir/search.json" \
+      --input "unique_proteins_fasta=$WORK/unique_proteins.fasta" \
+      --output "mmseqs_hits=$WORK/all_vs_all.tsv" \
+      --output "mmseqs_version=$WORK/mmseqs_version.txt"
+    ;;
+  split)
+    "$PYTHON_BIN" scripts/pipeline/record_stage.py --stage split \
+      --record "$record_dir/split.json" \
+      --input "normalized=$INPUT" \
+      --input "mmseqs_hits=$WORK/all_vs_all.tsv" \
+      --output "train_tsv=$WORK/train.tsv" \
+      --output "val_tsv=$WORK/val.tsv" \
+      --output "test_tsv=$WORK/test.tsv" \
+      --output "cluster_table=$WORK/clusters.tsv" \
+      --output "protein_assignments=$WORK/protein_assignments.tsv" \
+      --output "split_manifest=$WORK/split_manifest.json"
+    ;;
+  audit)
+    "$PYTHON_BIN" scripts/pipeline/record_stage.py --stage audit \
+      --record "$record_dir/audit.json" \
+      --input "train_tsv=$WORK/train.tsv" \
+      --input "val_tsv=$WORK/val.tsv" \
+      --input "test_tsv=$WORK/test.tsv" \
+      --output "cross_split_hits=$WORK/cross_split_hits.tsv" \
+      --output "leakage_audit=$WORK/leakage_audit.json"
+    ;;
+esac
+
 echo "Completed $STAGE at $(date)"
