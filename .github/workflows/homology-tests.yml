@@ -12,3 +12,5 @@ jobs:
         with:
           python-version: "3.11"
       - run: python -m unittest discover -s tests -v
+      - run: python -m py_compile scripts/data_pipeline/homology_split.py scripts/data_pipeline/sharded_mmseqs.py scripts/pipeline/record_stage.py
+      - run: bash -n scripts/submit_homology_cpu.sh scripts/slurm/homology_sharded_cpu.slurm.sh scripts/init_mrnawm_workspace.sh
