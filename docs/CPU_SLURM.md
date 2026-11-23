@@ -1,30 +1,26 @@
-# CPU Slurm submission (no GPU)
+# Nibi CPU submission: homology split
 
-This project works directly on `main`; no project-specific working branch is needed.
+The authoritative, current pipeline is the [root README](../README.md). All jobs run on Nibi, only on `mRNAWM/main`; no Dusky paths or partitions.
 
-From the **mRNAWM repository root** on the HPC login node, after the *unchanged* RefSeq download/parse/normalize/merge pipeline has created `$DATA_ROOT/normalized/all_refseq_mammalian_viral_unique.tsv`:
+**Resource policy:** the user-confirmed account is `rrg-hup`. CPU-only jobs never request `--gpus`. Alignment search and independent audit are parallelized using **32 CPUs × 6 GiB/CPU = 192 GiB/node** and a 12-hour limit. Prepare and split are mostly single-threaded: override to **4 CPUs × 6 GiB** at submission. Requests can be adjusted after real Nibi profiling.
 
 ```bash
-cd /home/ylong66/workspace/mRNAWM
-export DATA_ROOT=/home/ylong66/scratch/data/mRNAWM
-mkdir -p "$DATA_ROOT/splits/homology_v1_seed3407"
-module load mmseqs2  # ONLY if your HPC provides this module; otherwise activate an env with mmseqs
-# Verify the tool is available on compute nodes before submitting:
+cd /path/to/mRNAWM
+export DATA_ROOT="${SCRATCH:-$HOME/scratch}/mRNAWM"
+test -s "$DATA_ROOT/normalized/all_refseq_mammalian_viral_unique.tsv"
 command -v mmseqs
-
 SCRIPT=scripts/slurm/submit_homology_split_cpu.slurm.sh
-J1=$(sbatch --parsable --export=ALL,STAGE=prepare "$SCRIPT")
+
+J1=$(sbatch --parsable --cpus-per-task=4 --export=ALL,STAGE=prepare "$SCRIPT")
 J2=$(sbatch --parsable --dependency=afterok:$J1 --export=ALL,STAGE=search "$SCRIPT")
-J3=$(sbatch --parsable --dependency=afterok:$J2 --export=ALL,STAGE=split "$SCRIPT")
+J3=$(sbatch --parsable --cpus-per-task=4 --dependency=afterok:$J2 --export=ALL,STAGE=split "$SCRIPT")
 J4=$(sbatch --parsable --dependency=afterok:$J3 --export=ALL,STAGE=audit "$SCRIPT")
-echo "CPU jobs: prepare=$J1 search=$J2 split=$J3 audit=$J4"
+echo "prepare=$J1 search=$J2 split=$J3 audit=$J4"
 squeue -u "$USER"
 ```
 
-Every job requests **16 CPU cores, 64 GiB RAM, and 24 hours** with the old project's CPU account `def-hup-ab_cpu`; change the SBATCH account/partition/time for your own HPC if necessary. No `--gres=gpu`, CUDA, or GPU queue is requested. `module load mmseqs2` is illustrative, and depends on installed module naming; an already active MMseqs2 environment also works. Under SLURM the submission environment is normally inherited with `--export=ALL`.
+Each stage starts only if the previous stage succeeds. The 32-core MMseqs2 search may exceed 12 hours for a large all-vs-all RefSeq protein set; monitor logs and Slurm accounting, change time/memory/resources if necessary, and keep the same split protocol.
 
-Stage `audit` runs six independent directed cross-split searches. A successful search with zero hits is allowed, but missing files or nonzero exit status fail the job. If the split stage reports unexpectedly large connected components or a >5-percentage-point imbalance, investigate without weakening thresholds to force the split.
+The output directory is `$DATA_ROOT/splits/homology_v1_seed3407/`. The essential validation artifacts are `split_manifest.json` and `leakage_audit.json`. An independent heuristic search cannot prove the absence of every remote homolog or protein-domain overlap.
 
-Outputs: `$DATA_ROOT/splits/homology_v1_seed3407/{train,val,test}.tsv`, `clusters.tsv`, `protein_assignments.tsv`, `split_manifest.json`, and `leakage_audit.json`. Reaching a passing audit here is a necessary (not sufficient) prerequisite for the downstream training and evaluation pipeline.
-
-**Important:** no real-data Slurm job was submitted by ChatGPT. These are user-run submission commands; full-scale resource estimates should be checked on the HPC. If the MMseqs2 search is too large, increase time/memory or shard the computation while preserving a globally complete similarity graph.
+The original `mRNA_pr` scripts used `def-hup-ab_cpu/base` or `def-hup-ab_gpu/gpu/l40s`, which must not be copied to Nibi. The GPU header supplied by the user is recorded in the root README strictly as a reference, not as a request to submit a GPU job.
