@@ -1,6 +1,6 @@
 # mRNAWM — full-length mRNA world model
 
-**Active repository:** `YUESAI/mRNAWM`, **main only**. Run everything on **Nibi** (Slurm account `rrg-hup`), from the directory where you have already cloned/opened this Git repo. `mRNA_pr` is **read-only**. **Seed = 3407** across split, model, baselines and evaluation.
+**Active repository:** `YUESAI/mRNAWM`, **main only**. Run everything on **Nibi** (CPU Slurm account `def-hup-ab`), from the directory where you have already cloned/opened this Git repo. `mRNA_pr` is **read-only**. **Seed = 3407** across split, model, baselines and evaluation.
 
 ## Canonical Nibi data paths (never guess a path)
 
@@ -70,10 +70,10 @@ When these stages are migrated, **every runnable command goes in this README**, 
 
 ## Standard Nibi Slurm headers
 
-**CPU (default for new tasks):**
+**CPU (default for new tasks, confirmed on Nibi):**
 ```bash
 #!/bin/bash
-#SBATCH --account=rrg-hup
+#SBATCH --account=def-hup-ab
 #SBATCH --cpus-per-task=32
 #SBATCH --mem-per-cpu=6G
 #SBATCH --time=12:00:00
@@ -81,7 +81,7 @@ When these stages are migrated, **every runnable command goes in this README**, 
 #SBATCH --error=slurm-%j.log
 ```
 
-**GPU (only when explicitly requested; exactly your provided Nibi GPU allocation header):**
+**GPU (reference only, user-provided header; `rrg-hup` membership currently denied on Nibi):**
 ```bash
 #!/bin/bash
 #SBATCH --account=rrg-hup
@@ -93,7 +93,7 @@ When these stages are migrated, **every runnable command goes in this README**, 
 #SBATCH --error=slurm-%j.log
 ```
 
-Adjust CPU counts to a task's real parallelism. GPU example requests an H100 MIG slice, **not** the entire H100. Never carry `base/gpu/l40s` partitions or old Dusky account settings forward.
+The current authorized CPU account is `def-hup-ab`; the Nibi scheduler rejected `rrg-hup` for this user. The GPU header is retained solely as a reference, not as a confirmed usable allocation. Adjust CPU counts to a task's real parallelism. GPU example requests an H100 MIG slice, **not** the entire H100. Never carry `base/gpu/l40s` partitions or old Dusky account settings forward.
 
 ## Reproducibility rules
 
@@ -103,4 +103,4 @@ Adjust CPU counts to a task's real parallelism. GPU example requests an H100 MIG
 - **New stage = stage-specific folder + Slurm job + exact command documented here + output verification.** No abandoned paths or deprecated workflow steps.
 - Unit tests: `python3 -m unittest discover -s tests -v`.
 
-**Execution status:** implementation has been committed to GitHub. No initialization has been executed on Nibi by this chat, and no real-data split, training or evaluation has completed here.
+**Execution status:** Nibi workspace initialization succeeded (user log; source SHA-256 `cbedb5282fbc9a72e60c1b0469ffe5324f795a7908d7ceecc0c22c02e53fd2fe`). Initial CPU submission was blocked by missing MMseqs2; subsequent submission was rejected because `rrg-hup` was not authorized. CPU account corrected to `def-hup-ab`. No real-data split, training or evaluation has completed.
